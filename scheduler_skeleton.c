@@ -387,6 +387,21 @@ void handle_arrivals(Process *processes, int process_count, int current_time, Al
     // TODO: Find and record processes that have arrived at the current time
     // Remember to handle state transitions appropriately for each algorithm type
     *arrival_count = 0; // Initialize arrival count
+    for (int i = 0; i < process_count; i++) {
+        if (processes[i].arrival_time == current_time && processes[i].state == WAITING) { //if a new process and not started yet
+            arrived_indices[*arrival_count] = i;
+            (*arrival_count)++;
+            switch (algorithm)
+            {
+            case RR:
+                processes[i].state = READY;
+                break;
+            default:
+                // Others already set to waiting by default, going to check arrival time to see if they can be ran
+                break;
+            }
+        }
+    }
 }
 
 /**
@@ -396,6 +411,28 @@ void handle_rr_quantum_expiry(Process *processes, CPU *cpus, int cpu_count, int 
                            ReadyQueue *ready_queue, int current_time) {
     // TODO: Move Round Robin processes back to the queue when their quantum expires
     (void)current_time; // Explicitly mark as unused
+    for (int i = 0; i < cpu_count; i++) { // for each cpu
+        Process *cur_process = cpus[i].current_process;
+        int cur_idx = (int)(cur_process - processes); // to get idx of current process
+        if (cur_process->quantum_used >= time_quantum && cur_process->state != COMPLETED) { // if its used its time and not finished yet
+            // move to back
+            cur_process->state = READY;
+            cur_process->quantum_used = 0;
+            enqueue(ready_queue, cur_idx);
+            cpus[i].current_process = NULL; // no current process
+        }
+    }
+}
+
+//returns true if a is higher priority than b in srtf scheduling
+bool is_higher_srtf_priority(Process a, Process b) { 
+    if (a.remaining_time != b.remaining_time)
+        return a.remaining_time < b.remaining_time;
+
+    if (a.priority != b.priority)
+        return a.priority > b.priority;
+    
+    return a.pid < b.pid; // PID as tie breaker
 }
 
 /**
@@ -404,6 +441,25 @@ void handle_rr_quantum_expiry(Process *processes, CPU *cpus, int cpu_count, int 
 void handle_srtf_preemption(Process *processes, int process_count, CPU *cpus, int cpu_count, int current_time) {
     // TODO: Implement preemption logic for SRTF: replace running processes if a ready process is shorter
     // Consider priority as a tiebreaker when remaining times are equal
+    for (int i = 0; i < cpu_count; i++) {
+        Process *priority_process = cpus[i].current_process; // init to the current running process (Could be NULL)
+        for (int j = 0; j < process_count; j++) {
+            if ((processes[j].state == WAITING) && processes[j].arrival_time <= current_time) { //iterate through arrived processes that are waiting
+                if (priority_process == NULL || is_higher_srtf_priority(processes[j], *priority_process)) { 
+                    priority_process = &processes[j]; //set as new highest priority
+                }
+            }
+        }
+        if (priority_process != cpus[i].current_process) { // if we found higher priority than current
+            cpus[i].current_process->state = WAITING; // mark old as waiting
+            cpus[i].current_process = priority_process; // assign new
+            cpus[i].current_process->state = RUNNING; 
+            if (cpus[i].current_process->start_time == -1) { // if its the processes first time running
+                cpus[i].current_process->start_time = current_time;
+                cpus[i].current_process->response_time = current_time - cpus[i].current_process->arrival_time;
+            }
+        }
+    }
 }
 
 /**
