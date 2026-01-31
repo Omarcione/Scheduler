@@ -447,7 +447,7 @@ void handle_srtf_preemption(Process *processes, int process_count, CPU *cpus, in
         Process *priority_process = cpus[i].current_process; // init to the current running process (Could be NULL)
         for (int j = 0; j < process_count; j++) {
             if ((processes[j].state == WAITING) && processes[j].arrival_time <= current_time) { //iterate through arrived processes that are waiting
-                if (is_higher_srtf_priority(processes[j], *priority_process)) { 
+                if (is_higher_priority(processes[j], *priority_process, SRTF)) { 
                     priority_process = &processes[j]; //set as new highest priority
                 }
             }
@@ -474,7 +474,7 @@ bool is_higher_priority(Process a, Process b, Algorithm algorithm) {
             return a.remaining_time < b.remaining_time;
         break;
 
-    case RR:
+    case RR: // bad, dont use this for RR
         printf("Should not be passed in!!\n"); // might be wrong, but no priorities
         return -1;
 
