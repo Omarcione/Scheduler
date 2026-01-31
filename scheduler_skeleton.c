@@ -145,6 +145,7 @@ const char* get_color_for_pid(int pid);
 const char* algorithm_name(Algorithm algorithm);
 void parse_arguments(int argc, char *argv[], Algorithm *algorithm, int *cpu_count, 
                     int *time_quantum, char **input_file);
+bool is_higher_priority(Process a, Process b, Algorithm algorithm);
 
 /************************* QUEUE OPERATIONS *************************/
 
@@ -424,7 +425,7 @@ void handle_rr_quantum_expiry(Process *processes, CPU *cpus, int cpu_count, int 
     }
 }
 
-//returns true if a is higher priority than b in srtf scheduling
+//returns true if a is higher priority than b
 bool is_higher_srtf_priority(Process a, Process b) { 
     if (a.remaining_time != b.remaining_time)
         return a.remaining_time < b.remaining_time;
@@ -442,10 +443,11 @@ void handle_srtf_preemption(Process *processes, int process_count, CPU *cpus, in
     // TODO: Implement preemption logic for SRTF: replace running processes if a ready process is shorter
     // Consider priority as a tiebreaker when remaining times are equal
     for (int i = 0; i < cpu_count; i++) {
+        if (cpus[i].current_process == NULL) continue; // skip idle CPUs
         Process *priority_process = cpus[i].current_process; // init to the current running process (Could be NULL)
         for (int j = 0; j < process_count; j++) {
             if ((processes[j].state == WAITING) && processes[j].arrival_time <= current_time) { //iterate through arrived processes that are waiting
-                if (priority_process == NULL || is_higher_srtf_priority(processes[j], *priority_process)) { 
+                if (is_higher_srtf_priority(processes[j], *priority_process)) { 
                     priority_process = &processes[j]; //set as new highest priority
                 }
             }
@@ -462,6 +464,33 @@ void handle_srtf_preemption(Process *processes, int process_count, CPU *cpus, in
     }
 }
 
+//helper func to determine higher priority based on algorithm
+bool is_higher_priority(Process a, Process b, Algorithm algorithm) { 
+    switch (algorithm)
+    {
+    case SJF:
+    case SRTF:
+        if (a.remaining_time != b.remaining_time)
+            return a.remaining_time < b.remaining_time;
+        break;
+
+    case RR:
+        printf("Should not be passed in!!\n"); // might be wrong, but no priorities
+        return -1;
+
+    default: // FCFS
+        if (a.arrival_time != b.arrival_time)
+                return a.arrival_time < b.arrival_time;   
+        break;
+    }
+    // tie-breakers
+    if (a.priority != b.priority)
+        return a.priority > b.priority;
+
+    return a.pid < b.pid;
+}
+
+
 /**
  * Assign processes to idle CPUs based on the current scheduling algorithm
  */
@@ -470,6 +499,40 @@ void assign_processes_to_idle_cpus(Process *processes, int process_count, CPU *c
     // TODO: Select and assign processes to idle CPUs according to the chosen algorithm
     // Each algorithm has different process selection criteria
     // Be careful not to assign the same process to multiple CPUs
+    Process *priority;
+    for (int i = 0; i < cpu_count; i++) { //loop through cpus
+        priority = NULL;
+        if (cpus[i].current_process != NULL) continue; // skip if busy
+        
+        switch (algorithm) {
+        case (RR):
+            //TODO: Implement round robin assigment logic
+            break;
+        case (SJF):
+        case (SRTF):
+        case (FCFS):
+        default:
+            for (int j = 0; j < process_count; j++) {
+                    if (processes[j].state != WAITING) continue;
+                    if (priority == NULL || is_higher_priority(processes[j], *priority, algorithm)) { //iterate through arrived processes that are waiting
+                        priority = &processes[j];
+                    }
+                }
+            if (priority == NULL) return; // no waiting processes, later cpus wont find any either, can exit function
+
+            //update the cpu with priority algorithm
+            priority->state = RUNNING;
+
+            if (priority->start_time != -1) // first time starting
+                priority->start_time = current_time;
+
+            if (priority->response_time != -1) // first time starting
+                priority->response_time = current_time - priority->arrival_time;
+            
+                cpus[i].current_process = priority; // assign to cpu
+            break;
+        }
+    }
 }
 
 /**
