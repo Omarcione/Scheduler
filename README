@@ -1,6 +1,5 @@
 Owen Marcione, Jack Stewart
 
-We need to answer this question
 1. What happens to response time with RR as quantum lengths increase?
-    As quantum lengths increase using a RR scheduling algorithm, the average response increases. 
+    As quantum lengths increase using the RR scheduling algorithm, the average response increases. 
     Average response time is minimized when the quantum length is small because processes are given more frequent access to the CPU.

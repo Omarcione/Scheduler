@@ -119,7 +119,7 @@ void handle_srtf_preemption(Process *processes, int process_count, CPU *cpus, in
 void assign_processes_to_idle_cpus(Process *processes, int process_count, CPU *cpus, int cpu_count, 
                                  Algorithm algorithm, ReadyQueue *ready_queue, int current_time);
 void execute_processes(Process *processes, int process_count, CPU *cpus, int cpu_count, 
-                      int current_time, int *completed_count);
+                      int current_time, int *completed_count, Algorithm algorithm);
 void update_waiting_times(Process *processes, int process_count, int current_time);
 
 // Output and visualization
@@ -414,6 +414,7 @@ void handle_rr_quantum_expiry(Process *processes, CPU *cpus, int cpu_count, int 
     (void)current_time; // Explicitly mark as unused
     for (int i = 0; i < cpu_count; i++) { // for each cpu
         Process *cur_process = cpus[i].current_process;
+        if (cur_process == NULL) continue;
         int cur_idx = (int)(cur_process - processes); // to get idx of current process
         if (cur_process->quantum_used >= time_quantum && cur_process->state != COMPLETED) { // if its used its time and not finished yet
             // move to back
@@ -527,7 +528,7 @@ void assign_processes_to_idle_cpus(Process *processes, int process_count, CPU *c
         case (FCFS):
         default:
             for (int j = 0; j < process_count; j++) {
-                    if (processes[j].state != WAITING) continue;
+                    if (processes[j].state != WAITING || processes[j].arrival_time > current_time) continue;
                     if (priority == NULL || is_higher_priority(processes[j], *priority, algorithm)) { //iterate through arrived processes that are waiting
                         priority = &processes[j];
                     }
@@ -537,10 +538,10 @@ void assign_processes_to_idle_cpus(Process *processes, int process_count, CPU *c
             //update the cpu with priority algorithm
             priority->state = RUNNING;
 
-            if (priority->start_time != -1) // first time starting
+            if (priority->start_time == -1) // first time starting
                 priority->start_time = current_time;
 
-            if (priority->response_time != -1) // first time starting
+            if (priority->response_time == -1) // first time starting
                 priority->response_time = current_time - priority->arrival_time;
             
                 cpus[i].current_process = priority; // assign to cpu
@@ -566,30 +567,32 @@ void update_waiting_times(Process *processes, int process_count, int current_tim
  * Execute processes on CPUs for the current time step
  */
 void execute_processes(Process *processes, int process_count, CPU *cpus, int cpu_count,
-                     int current_time, int *completed_count) {
+                     int current_time, int *completed_count, Algorithm algorithm) {
     // TODO: Execute one time unit of each running process and track CPU idle/busy time
     (void)processes;
     (void)process_count;
     for (int i = 0; i < cpu_count; i++){
         // if cpu is busy and current process is running
-        if (cpus[cpu_count].current_process != NULL && cpus[cpu_count].current_process->state == RUNNING){
+        if (cpus[i].current_process != NULL && cpus[i].current_process->state == RUNNING){
             // adjust running times
-            Process *running_process = cpus[cpu_count].current_process;
-            cpus[cpu_count].busy_time++;
+            Process *running_process = cpus[i].current_process;
+            cpus[i].busy_time++;
             running_process->remaining_time--;
-            running_process->quantum_used++;
+            if (algorithm == RR) {
+                running_process->quantum_used++;
+            }
 
             // check if completed
             if (running_process->remaining_time <= 0) {
                 running_process->state = COMPLETED;
                 running_process->finish_time = current_time + 1; // +1 because it finishes at the end of this time unit
-                cpus[cpu_count].current_process = NULL; // CPU becomes idle
+                cpus[i].current_process = NULL; // CPU becomes idle
                 (*completed_count)++;
             }
         }
         // if cpu is idle increment idle time
         else { 
-            cpus[cpu_count].idle_time++;
+            cpus[i].idle_time++;
         }
     }
 }
@@ -665,7 +668,7 @@ void simulate(Process *processes, int process_count, int cpu_count, Algorithm al
         update_waiting_times(processes, process_count, current_time);
 
         // Execute processes on CPUs
-        execute_processes(processes, process_count, cpus, cpu_count, current_time, &completed_count);
+        execute_processes(processes, process_count, cpus, cpu_count, current_time, &completed_count, algorithm);
 
         // Advance time
         current_time++;
