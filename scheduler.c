@@ -507,6 +507,20 @@ void assign_processes_to_idle_cpus(Process *processes, int process_count, CPU *c
         switch (algorithm) {
         case (RR):
             //TODO: Implement round robin assigment logic
+            {
+                int next_idx = dequeue(ready_queue); // get next process from ready queue
+                if (next_idx == -1) return; // no waiting processes
+
+                Process *next_process = &processes[next_idx];
+                next_process->state = RUNNING;
+
+                if (next_process->start_time == -1) { // first time starting
+                    next_process->start_time = current_time;
+                    next_process->response_time = current_time - next_process->arrival_time;
+                }
+
+                cpus[i].current_process = next_process; // assign to cpu
+            }
             break;
         case (SJF):
         case (SRTF):
@@ -540,6 +554,12 @@ void assign_processes_to_idle_cpus(Process *processes, int process_count, CPU *c
  */
 void update_waiting_times(Process *processes, int process_count, int current_time) {
     // TODO: Increment waiting_time for processes that have arrived but are not running
+
+    for (int i = 0; i < process_count; i++){
+        if (processes[i].arrival_time <= current_time && processes[i].state == WAITING){
+            processes[i].waiting_time++;
+        }
+    }
 }
 
 /**
@@ -550,6 +570,28 @@ void execute_processes(Process *processes, int process_count, CPU *cpus, int cpu
     // TODO: Execute one time unit of each running process and track CPU idle/busy time
     (void)processes;
     (void)process_count;
+    for (int i = 0; i < cpu_count; i++){
+        // if cpu is busy and current process is running
+        if (cpus[cpu_count].current_process != NULL && cpus[cpu_count].current_process->state == RUNNING){
+            // adjust running times
+            Process *running_process = cpus[cpu_count].current_process;
+            cpus[cpu_count].busy_time++;
+            running_process->remaining_time--;
+            running_process->quantum_used++;
+
+            // check if completed
+            if (running_process->remaining_time <= 0) {
+                running_process->state = COMPLETED;
+                running_process->finish_time = current_time + 1; // +1 because it finishes at the end of this time unit
+                cpus[cpu_count].current_process = NULL; // CPU becomes idle
+                (*completed_count)++;
+            }
+        }
+        // if cpu is idle increment idle time
+        else { 
+            cpus[cpu_count].idle_time++;
+        }
+    }
 }
 
 /************************* MAIN SIMULATION *************************/
